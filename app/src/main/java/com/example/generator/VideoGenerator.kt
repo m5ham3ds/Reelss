@@ -83,13 +83,15 @@ class VideoGenerator {
             
             for (i in 0 until totalAyahs) {
                 val ayah = startAyah + i
-                onProgress("جاري تحميل الآية \$ayah...", 0.1f + (i * 0.4f / totalAyahs))
+                onProgress("جاري تحميل الآية $ayah...", 0.1f + (i * 0.4f / totalAyahs))
                 
-                val text = fetchVerseText(surah, ayah, "quran-uthmani")
-                val translation = if (showTranslation) fetchVerseText(surah, ayah, "en.asad") else null
+                val verseInfo = fetchVerseInfo(surah, ayah, "quran-uthmani")
+                val text = verseInfo.first
+                val globalAyahNumber = verseInfo.second
+                val translation = if (showTranslation) fetchVerseInfo(surah, ayah, "en.asad").first else null
 
                 val audioFileName = String.format("%03d%03d.mp3", surah, ayah)
-                val url = "https://everyayah.com/data/\$reciterId/\$audioFileName"
+                val url = "https://cdn.islamic.network/quran/audio/64/$reciterId/$globalAyahNumber.mp3"
                 val destFile = File(context.cacheDir, audioFileName)
                 
                 downloadAudio(url, destFile)
@@ -114,7 +116,7 @@ class VideoGenerator {
             
             if (verses.isEmpty()) throw Exception("لا توجد آيات")
             
-            val outputPath = File(context.cacheDir, "quran_reel_\${System.currentTimeMillis()}.mp4").absolutePath
+            val outputPath = File(context.cacheDir, "quran_reel_${System.currentTimeMillis()}.mp4").absolutePath
             val muxer = MediaMuxer(outputPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
             
             var videoTrackIdx = -1
@@ -212,7 +214,7 @@ class VideoGenerator {
             val frameDurationUs = 1000000L / fps
             
             for ((idx, verse) in verses.withIndex()) {
-                onProgress("جاري إنشاء مشهد الآية \${startAyah + idx}...", 0.5f + (idx * 0.4f / verses.size))
+                onProgress("جاري إنشاء مشهد الآية ${startAyah + idx}...", 0.5f + (idx * 0.4f / verses.size))
                 val bitmap = createVerseBitmap(verse.text, verse.translation, bgBitmap, context)
                 val framesNeeded = Math.max(1, (verse.durationUs / frameDurationUs).toInt() + 1)
                 
@@ -241,7 +243,7 @@ class VideoGenerator {
             onProgress("جاري الحفظ في المعرض...", 0.95f)
             
             val values = ContentValues().apply {
-                put(MediaStore.Video.Media.DISPLAY_NAME, "Quran_Reel_\${System.currentTimeMillis()}.mp4")
+                put(MediaStore.Video.Media.DISPLAY_NAME, "Quran_Reel_${System.currentTimeMillis()}.mp4")
                 put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
                 put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/QuranReels")
             }
@@ -264,14 +266,15 @@ class VideoGenerator {
         }
     }
 
-    private fun fetchVerseText(surah: Int, ayah: Int, edition: String): String {
-        val url = "https://api.alquran.cloud/v1/ayah/\$surah:\$ayah/\$edition"
+    private fun fetchVerseInfo(surah: Int, ayah: Int, edition: String): Pair<String, Int> {
+        val url = "https://api.alquran.cloud/v1/ayah/$surah:$ayah/$edition"
         val request = Request.Builder().url(url).build()
         val response = client.newCall(request).execute()
         if (!response.isSuccessful) throw Exception("فشل تحميل النص")
         val body = response.body?.string() ?: ""
         val json = JSONObject(body)
-        return json.getJSONObject("data").getString("text")
+        val data = json.getJSONObject("data")
+        return Pair(data.getString("text"), data.getInt("number"))
     }
 
     private fun downloadAudio(url: String, destFile: File) {

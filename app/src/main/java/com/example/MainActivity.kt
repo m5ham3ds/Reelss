@@ -52,16 +52,6 @@ val SURAH_NAMES = listOf(
 
 val SURAH_COUNTS = mapOf(1 to 7, 2 to 286, 3 to 200, 4 to 176, 5 to 120, 6 to 165, 7 to 206, 8 to 75, 9 to 129, 10 to 109, 11 to 123, 12 to 111, 13 to 43, 14 to 52, 15 to 99, 16 to 128, 17 to 111, 18 to 110, 19 to 98, 20 to 135, 21 to 112, 22 to 78, 23 to 118, 24 to 64, 25 to 77, 26 to 227, 27 to 93, 28 to 88, 29 to 69, 30 to 60, 31 to 34, 32 to 30, 33 to 73, 34 to 54, 35 to 45, 36 to 83, 37 to 182, 38 to 88, 39 to 75, 40 to 85, 41 to 54, 42 to 53, 43 to 89, 44 to 59, 45 to 37, 46 to 35, 47 to 38, 48 to 29, 49 to 18, 50 to 45, 51 to 60, 52 to 49, 53 to 62, 54 to 55, 55 to 78, 56 to 96, 57 to 29, 58 to 22, 59 to 24, 60 to 13, 61 to 14, 62 to 11, 63 to 11, 64 to 18, 65 to 12, 66 to 12, 67 to 30, 68 to 52, 69 to 52, 70 to 44, 71 to 28, 72 to 28, 73 to 20, 74 to 56, 75 to 40, 76 to 31, 77 to 50, 78 to 40, 79 to 46, 80 to 42, 81 to 29, 82 to 19, 83 to 36, 84 to 25, 85 to 22, 86 to 17, 87 to 19, 88 to 26, 89 to 30, 90 to 20, 91 to 15, 92 to 21, 93 to 11, 94 to 8, 95 to 8, 96 to 19, 97 to 5, 98 to 8, 99 to 8, 100 to 11, 101 to 11, 102 to 8, 103 to 3, 104 to 9, 105 to 5, 106 to 4, 107 to 7, 108 to 3, 109 to 6, 110 to 3, 111 to 5, 112 to 4, 113 to 5, 114 to 6)
 
-val RECITERS = listOf(
-    "AbdulSamad_64kbps_QuranExplorer.Com" to "الشيخ عبدالباسط عبدالصمد",
-    "Abdul_Basit_Murattal_64kbps" to "الشيخ عبدالباسط عبدالصمد مرتل",
-    "Abdurrahmaan_As-Sudais_64kbps" to "الشيخ عبدالرحمن السديس",
-    "Maher_AlMuaiqly_64kbps" to "الشيخ ماهر المعيقلي",
-    "Alafasy_64kbps" to "الشيخ مشاري العفاسي",
-    "Husary_64kbps" to "الشيخ محمود خليل الحصري",
-    "Hudhaify_64kbps" to "الشيخ عبدالله الحذيفي"
-)
-
 class MainActivity : ComponentActivity() {
     private val viewModel: ReelViewModel by viewModels()
 
@@ -103,11 +93,12 @@ class MainActivity : ComponentActivity() {
 fun HomeScreen(viewModel: ReelViewModel, isArabic: Boolean, onNavigateToSettings: () -> Unit) {
     val context = LocalContext.current
     val state by viewModel.uiState.collectAsState()
+    val recitersList by viewModel.reciters.collectAsState()
 
     var selectedSurahIdx by remember { mutableIntStateOf(0) }
     var startAyahText by remember { mutableStateOf("1") }
     var endAyahText by remember { mutableStateOf("5") }
-    var selectedReciterIdx by remember { mutableIntStateOf(4) } // Default Alafasy
+    var selectedReciterIdx by remember { mutableIntStateOf(0) }
 
     var surahExpanded by remember { mutableStateOf(false) }
     var reciterExpanded by remember { mutableStateOf(false) }
@@ -191,7 +182,7 @@ fun HomeScreen(viewModel: ReelViewModel, isArabic: Boolean, onNavigateToSettings
                 onExpandedChange = { reciterExpanded = it }
             ) {
                 OutlinedTextField(
-                    value = RECITERS[selectedReciterIdx].second,
+                    value = if (recitersList.isNotEmpty() && selectedReciterIdx < recitersList.size) recitersList[selectedReciterIdx].second else "Loading...",
                     onValueChange = {},
                     readOnly = true,
                     label = { Text(if (isArabic) "القارئ" else "Reciter") },
@@ -202,7 +193,7 @@ fun HomeScreen(viewModel: ReelViewModel, isArabic: Boolean, onNavigateToSettings
                     expanded = reciterExpanded,
                     onDismissRequest = { reciterExpanded = false }
                 ) {
-                    RECITERS.forEachIndexed { index, reciter ->
+                    recitersList.forEachIndexed { index, reciter ->
                         DropdownMenuItem(
                             text = { Text(reciter.second) },
                             onClick = {
@@ -231,7 +222,7 @@ fun HomeScreen(viewModel: ReelViewModel, isArabic: Boolean, onNavigateToSettings
                             surah = selectedSurahIdx + 1,
                             startAyah = cStart,
                             endAyah = cEnd,
-                            reciterId = RECITERS[selectedReciterIdx].first
+                            reciterId = if (recitersList.isNotEmpty()) recitersList[selectedReciterIdx].first else "ar.alafasy"
                         )
                     },
                     modifier = Modifier.fillMaxWidth().height(56.dp).testTag("generate_btn"),
