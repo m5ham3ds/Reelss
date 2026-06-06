@@ -1,0 +1,6 @@
+{
+  "name": "Quran Reels Maker",
+  "description": "Create short vertical video clips from Quran verses with Arabic text and synced recitation audio.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
