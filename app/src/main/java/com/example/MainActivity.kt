@@ -141,7 +141,7 @@ fun HomeScreen(viewModel: ReelViewModel, isArabic: Boolean, onNavigateToSettings
                     readOnly = true,
                     label = { Text(if (isArabic) "اختر السورة" else "Select Surah") },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = surahExpanded) },
-                    modifier = Modifier.fillMaxWidth().testTag("surah_dropdown")
+                    modifier = Modifier.menuAnchor().fillMaxWidth().testTag("surah_dropdown")
                 )
                 ExposedDropdownMenu(
                     expanded = surahExpanded,
@@ -187,7 +187,7 @@ fun HomeScreen(viewModel: ReelViewModel, isArabic: Boolean, onNavigateToSettings
                     readOnly = true,
                     label = { Text(if (isArabic) "القارئ" else "Reciter") },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = reciterExpanded) },
-                    modifier = Modifier.fillMaxWidth().testTag("reciter_dropdown")
+                    modifier = Modifier.menuAnchor().fillMaxWidth().testTag("reciter_dropdown")
                 )
                 ExposedDropdownMenu(
                     expanded = reciterExpanded,

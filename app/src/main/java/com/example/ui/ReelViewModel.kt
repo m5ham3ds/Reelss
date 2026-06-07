@@ -39,7 +39,7 @@ class ReelViewModel : ViewModel() {
     private fun fetchReciters() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val request = Request.Builder().url("https://api.alquran.cloud/v1/edition?format=audio").build()
+                val request = Request.Builder().url("https://api.alquran.cloud/v1/edition?format=audio&language=ar").build()
                 val response = client.newCall(request).execute()
                 if (response.isSuccessful) {
                     val json = JSONObject(response.body?.string() ?: "")
@@ -48,7 +48,11 @@ class ReelViewModel : ViewModel() {
                     for (i in 0 until data.length()) {
                         val obj = data.getJSONObject(i)
                         val id = obj.getString("identifier")
-                        val name = obj.getString("englishName")
+                        val name = if (obj.has("name") && !obj.isNull("name")) {
+                            obj.getString("name")
+                        } else {
+                            obj.getString("englishName")
+                        }
                         list.add(id to name)
                     }
                     if (list.isNotEmpty()) {
@@ -59,9 +63,9 @@ class ReelViewModel : ViewModel() {
                 e.printStackTrace()
                 // Fallback list
                 _reciters.value = listOf(
-                    "ar.alafasy" to "Alafasy",
-                    "ar.sudais" to "Sudais",
-                    "ar.abdulbasitmurattal" to "AbdulBaset"
+                    "ar.alafasy" to "مشاري العفاسي",
+                    "ar.sudais" to "عبد الرحمن السديس",
+                    "ar.abdulbasitmurattal" to "عبد الباسط عبد الصمد"
                 )
             }
         }
