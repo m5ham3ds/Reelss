@@ -39,7 +39,7 @@ class ReelViewModel : ViewModel() {
     private fun fetchReciters() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val request = Request.Builder().url("https://api.alquran.cloud/v1/edition?format=audio&language=ar").build()
+                val request = Request.Builder().url("https://api.alquran.cloud/v1/edition?format=audio").build()
                 val response = client.newCall(request).execute()
                 if (response.isSuccessful) {
                     val json = JSONObject(response.body?.string() ?: "")

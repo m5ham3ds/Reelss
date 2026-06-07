@@ -90,7 +90,7 @@ class VideoGenerator {
                 val globalAyahNumber = verseInfo.second
                 val translation = if (showTranslation) fetchVerseInfo(surah, ayah, "en.asad").first else null
 
-                val audioFileName = String.format("%03d%03d.mp3", surah, ayah)
+                val audioFileName = "${reciterId}_${surah}_${ayah}.mp3"
                 val url = "https://cdn.islamic.network/quran/audio/64/$reciterId/$globalAyahNumber.mp3"
                 val destFile = File(context.cacheDir, audioFileName)
                 
@@ -305,32 +305,33 @@ class VideoGenerator {
         val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
             textAlign = Paint.Align.CENTER
-            typeface = Typeface.DEFAULT_BOLD
-            setShadowLayer(5f, 0f, 0f, Color.BLACK)
+            typeface = Typeface.SERIF
+            setShadowLayer(8f, 0f, 4f, Color.argb(200, 0, 0, 0))
         }
         
-        var textSize = 150f
+        var textSize = 110f
         var sl: StaticLayout
         while (true) {
             textPaint.textSize = textSize
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 sl = StaticLayout.Builder.obtain(text, 0, text.length, textPaint, 960)
                     .setAlignment(Layout.Alignment.ALIGN_CENTER)
+                    .setLineSpacing(0f, 1.3f)
                     .build()
             } else {
                 @Suppress("DEPRECATION")
-                sl = StaticLayout(text, textPaint, 960, Layout.Alignment.ALIGN_CENTER, 1f, 0f, false)
+                sl = StaticLayout(text, textPaint, 960, Layout.Alignment.ALIGN_CENTER, 1.3f, 0f, false)
             }
             if (sl.height < 960 || textSize <= 40f) break
             textSize -= 5f
         }
         
         val transPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.YELLOW
+            color = Color.parseColor("#E0E0E0")
             textAlign = Paint.Align.CENTER
-            typeface = Typeface.DEFAULT
+            typeface = Typeface.SERIF
             this.textSize = 50f
-            setShadowLayer(5f, 0f, 0f, Color.BLACK)
+            setShadowLayer(8f, 0f, 4f, Color.argb(200, 0, 0, 0))
         }
         
         var transSl: StaticLayout? = null
