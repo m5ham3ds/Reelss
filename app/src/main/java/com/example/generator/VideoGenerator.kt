@@ -65,6 +65,9 @@ class VideoGenerator {
             
             // 1. Fetch text & style configurations
             val settingsManager = SettingsManager(context)
+            val language = settingsManager.language.first()
+            val isArabic = language == "ar"
+            
             val fontFamily = settingsManager.fontFamily.first()
             val textFontSize = settingsManager.fontSize.first()
             val textColorStr = settingsManager.textColor.first()
@@ -79,11 +82,14 @@ class VideoGenerator {
             
             val translationFontSize = settingsManager.translationFontSize.first()
             val translationColorStr = settingsManager.translationColor.first()
+            val pixabayApiKey = settingsManager.pixabayApiKey.first()
             
-            // 2. Fetch Background Image if Pexels API Key is provided
+            // 2. Fetch Background Image if Pexels or Pixabay key is provided
+            var imageLoaded = false
+            val bgFile = File(context.cacheDir, "bg_image.jpg")
+            
             if (pexelsApiKey.isNotBlank()) {
-                onProgress("جاري تحميل الخلفية السينمائية...", 0.05f)
-                val bgFile = File(context.cacheDir, "bg_image.jpg")
+                onProgress(if (isArabic) "جاري تحميل الخلفية السينمائية (Pexels)..." else "Downloading background (Pexels)...", 0.05f)
                 try {
                     val request = Request.Builder()
                         .url("https://api.pexels.com/v1/search?query=scenic+night+stars+minimalist&orientation=portrait&per_page=15")
@@ -99,6 +105,7 @@ class VideoGenerator {
                             val imgUrl = randomPhoto.getJSONObject("src").getString("large2x")
                             downloadAudio(imgUrl, bgFile)
                             bgBitmap = android.graphics.BitmapFactory.decodeFile(bgFile.absolutePath)
+                            imageLoaded = true
                         }
                     }
                 } catch (e: Exception) {
@@ -106,10 +113,34 @@ class VideoGenerator {
                 }
             }
             
-            // 3. Download translation & audio files
+            if (!imageLoaded && pixabayApiKey.isNotBlank()) {
+                onProgress(if (isArabic) "جاري تحميل الخلفية السينمائية (Pixabay)..." else "Downloading background (Pixabay)...", 0.05f)
+                try {
+                    val request = Request.Builder()
+                        .url("https://pixabay.com/api/?key=$pixabayApiKey&q=stars+night+scenic+minimalist&image_type=photo&orientation=vertical&per_page=15")
+                        .build()
+                    val response = client.newCall(request).execute()
+                    if (response.isSuccessful) {
+                        val body = response.body?.string() ?: ""
+                        val json = JSONObject(body)
+                        val hits = json.getJSONArray("hits")
+                        if (hits.length() > 0) {
+                            val randomPhoto = hits.getJSONObject((0 until hits.length()).random())
+                            val imgUrl = randomPhoto.getString("largeImageURL")
+                            downloadAudio(imgUrl, bgFile)
+                            bgBitmap = android.graphics.BitmapFactory.decodeFile(bgFile.absolutePath)
+                            imageLoaded = true
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+            
+            // 3. Download translation & audio files, then transcode to AAC/M4A for 100% video muxing compatibility
             for (i in 0 until totalAyahs) {
                 val ayah = startAyah + i
-                onProgress("جاري تحميل مراجع الآية $ayah...", 0.1f + (i * 0.4f / totalAyahs))
+                onProgress(if (isArabic) "جاري تحميل الآية $ayah وحفظ مراجع الصوت..." else "Downloading reference audio for Ayah $ayah...", 0.1f + (i * 0.4f / totalAyahs))
                 
                 val verseInfo = fetchVerseInfo(surah, ayah, "quran-uthmani")
                 val text = verseInfo.first
@@ -122,7 +153,12 @@ class VideoGenerator {
                 
                 downloadAudio(url, destFile)
                 
-                val ext = MediaExtractor().apply { setDataSource(destFile.absolutePath) }
+                onProgress(if (isArabic) "جاري ترميز ملف الصوت بدقة سينمائية..." else "Encoding audio block dynamically...", 0.15f + (i * 0.4f / totalAyahs))
+                val aacFileName = "${reciterId}_${surah}_${ayah}_transcoded.m4a"
+                val aacFile = File(context.cacheDir, aacFileName)
+                transcodeMp3ToAac(destFile.absolutePath, aacFile.absolutePath)
+                
+                val ext = MediaExtractor().apply { setDataSource(aacFile.absolutePath) }
                 ext.selectTrack(0)
                 var durationUs = ext.getTrackFormat(0).getLong(MediaFormat.KEY_DURATION, -1L)
                 if (durationUs <= 0) {
@@ -135,10 +171,10 @@ class VideoGenerator {
                     durationUs = maxTs
                 }
                 ext.release()
-                verses.add(VerseData(text, translation, destFile.absolutePath, durationUs))
+                verses.add(VerseData(text, translation, aacFile.absolutePath, durationUs))
             }
             
-            onProgress("جاري تهيئة معالجات المقطع...", 0.5f)
+            onProgress(if (isArabic) "جاري تهيئة معالجات المقطع..." else "Initializing video filters...", 0.5f)
             
             if (verses.isEmpty()) throw Exception("لا توجد آيات صالحة لعمل المقطع")
             
@@ -152,10 +188,10 @@ class VideoGenerator {
             
             val audioFormat = MediaExtractor().apply { setDataSource(verses[0].audioPath) }.apply { selectTrack(0) }.getTrackFormat(0)
             
-            val videoFormat = MediaFormat.createVideoFormat("video/avc", 1080, 1920).apply {
+            val videoFormat = MediaFormat.createVideoFormat("video/avc", 720, 1280).apply {
                 setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible)
-                setInteger(MediaFormat.KEY_BIT_RATE, 2500000)
-                setInteger(MediaFormat.KEY_FRAME_RATE, 30)
+                setInteger(MediaFormat.KEY_BIT_RATE, 2000000)
+                setInteger(MediaFormat.KEY_FRAME_RATE, 15)
                 setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
             }
             
@@ -244,11 +280,11 @@ class VideoGenerator {
             }
             
             var videoPtsUs = 0L
-            val fps = 2
+            val fps = 15
             val frameDurationUs = 1000000L / fps
             
             for ((idx, verse) in verses.withIndex()) {
-                onProgress("جاري إنشاء مشهد الآية ${startAyah + idx}...", 0.5f + (idx * 0.4f / verses.size))
+                onProgress(if (isArabic) "جاري تصوير مشهد الآية ${startAyah + idx}..." else "Rendering scenes for Ayah ${startAyah + idx}...", 0.5f + (idx * 0.4f / verses.size))
                 
                 val bitmap = createVerseBitmap(
                     text = verse.text,
@@ -321,7 +357,7 @@ class VideoGenerator {
             bgBitmap?.recycle()
             bgBitmap = null
             
-            onProgress("جاري تصدير المقطع وحفظه بالاستوديو...", 0.95f)
+            onProgress(if (isArabic) "جاري تصدير المقطع وحفظه بالاستوديو..." else "Exporting video and registering in Gallery...", 0.95f)
             
             val values = ContentValues().apply {
                 put(MediaStore.Video.Media.DISPLAY_NAME, "Quran_Reel_${System.currentTimeMillis()}.mp4")
@@ -381,6 +417,123 @@ class VideoGenerator {
         }
     }
 
+    private fun transcodeMp3ToAac(inputPath: String, outputPath: String) {
+        val extractor = MediaExtractor().apply { setDataSource(inputPath) }
+        if (extractor.trackCount == 0) {
+            extractor.release()
+            throw Exception("ملف الصوت فارغ أو غير صالح للاستخدام")
+        }
+        extractor.selectTrack(0)
+        val inputFormat = extractor.getTrackFormat(0)
+        val mime = inputFormat.getString(MediaFormat.KEY_MIME) ?: "audio/mpeg"
+        
+        // 1. Setup Decoder
+        val decoder = MediaCodec.createDecoderByType(mime)
+        decoder.configure(inputFormat, null, null, 0)
+        decoder.start()
+        
+        // 2. Setup Encoder (AAC)
+        val sampleRate = if (inputFormat.containsKey(MediaFormat.KEY_SAMPLE_RATE)) inputFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE) else 44100
+        val channelCount = if (inputFormat.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) inputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT) else 1
+        val outputFormat = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, channelCount).apply {
+            setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
+            setInteger(MediaFormat.KEY_BIT_RATE, 64000)
+            setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 1024 * 1024)
+        }
+        val encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)
+        encoder.configure(outputFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        encoder.start()
+        
+        // 3. Setup Muxer
+        val muxer = MediaMuxer(outputPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+        var outTrackIdx = -1
+        
+        val decoderBufferInfo = MediaCodec.BufferInfo()
+        val encoderBufferInfo = MediaCodec.BufferInfo()
+        
+        var isExtractorEOS = false
+        var isDecoderEOS = false
+        var isEncoderEOS = false
+        
+        val timeoutUs = 5000L
+        var muxerStarted = false
+        
+        while (!isEncoderEOS) {
+            // A. Read from extractor and feed decoder
+            if (!isExtractorEOS) {
+                val inIdx = decoder.dequeueInputBuffer(timeoutUs)
+                if (inIdx >= 0) {
+                    val buf = decoder.getInputBuffer(inIdx)!!
+                    val size = extractor.readSampleData(buf, 0)
+                    if (size < 0) {
+                        decoder.queueInputBuffer(inIdx, 0, 0, 0L, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                        isExtractorEOS = true
+                    } else {
+                        decoder.queueInputBuffer(inIdx, 0, size, extractor.sampleTime, 0)
+                        extractor.advance()
+                    }
+                }
+            }
+            
+            // B. Decode output into encoder input
+            if (!isDecoderEOS) {
+                val outIdx = decoder.dequeueOutputBuffer(decoderBufferInfo, timeoutUs)
+                if (outIdx >= 0) {
+                    val buf = decoder.getOutputBuffer(outIdx)!!
+                    val size = decoderBufferInfo.size
+                    
+                    val encInIdx = encoder.dequeueInputBuffer(timeoutUs)
+                    if (encInIdx >= 0) {
+                        val encBuf = encoder.getInputBuffer(encInIdx)!!
+                        encBuf.clear()
+                        if (size > 0) {
+                            buf.position(decoderBufferInfo.offset)
+                            buf.limit(decoderBufferInfo.offset + size)
+                            encBuf.put(buf)
+                        }
+                        
+                        val flags = if ((decoderBufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                            isDecoderEOS = true
+                            MediaCodec.BUFFER_FLAG_END_OF_STREAM
+                        } else 0
+                        encoder.queueInputBuffer(encInIdx, 0, size, decoderBufferInfo.presentationTimeUs, flags)
+                    }
+                    decoder.releaseOutputBuffer(outIdx, false)
+                }
+            }
+            
+            // C. Encode output and write to muxer
+            val encOutIdx = encoder.dequeueOutputBuffer(encoderBufferInfo, timeoutUs)
+            if (encOutIdx >= 0) {
+                val buf = encoder.getOutputBuffer(encOutIdx)!!
+                if ((encoderBufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
+                    encoderBufferInfo.size = 0
+                }
+                
+                if (encoderBufferInfo.size > 0 && outTrackIdx >= 0) {
+                    buf.position(encoderBufferInfo.offset)
+                    buf.limit(encoderBufferInfo.offset + encoderBufferInfo.size)
+                    muxer.writeSampleData(outTrackIdx, buf, encoderBufferInfo)
+                }
+                
+                if ((encoderBufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                    isEncoderEOS = true
+                }
+                encoder.releaseOutputBuffer(encOutIdx, false)
+            } else if (encOutIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                outTrackIdx = muxer.addTrack(encoder.outputFormat)
+                muxer.start()
+                muxerStarted = true
+            }
+        }
+        
+        // Cleanup all
+        try { decoder.stop(); decoder.release() } catch (e: Exception) {}
+        try { encoder.stop(); encoder.release() } catch (e: Exception) {}
+        try { if (muxerStarted) muxer.stop(); muxer.release() } catch (e: Exception) {}
+        try { extractor.release() } catch (e: Exception) {}
+    }
+
     private fun createVerseBitmap(
         text: String,
         translation: String?,
@@ -398,13 +551,13 @@ class VideoGenerator {
         translationFontSize: Int,
         translationColorStr: String
     ): Bitmap {
-        val bitmap = Bitmap.createBitmap(1080, 1920, Bitmap.Config.ARGB_8888)
+        val bitmap = Bitmap.createBitmap(720, 1280, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         
         // 1. Draw Background
         if (bgBitmap != null) {
             val src = android.graphics.Rect(0, 0, bgBitmap.width, bgBitmap.height)
-            val dst = android.graphics.Rect(0, 0, 1080, 1920)
+            val dst = android.graphics.Rect(0, 0, 720, 1280)
             canvas.drawBitmap(bgBitmap, src, dst, null)
             canvas.drawColor(Color.argb(140, 0, 0, 0))
         } else {
@@ -436,13 +589,13 @@ class VideoGenerator {
         }
         
         val sl = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            StaticLayout.Builder.obtain(text, 0, text.length, textPaint, 920)
+            StaticLayout.Builder.obtain(text, 0, text.length, textPaint, 620)
                 .setAlignment(Layout.Alignment.ALIGN_CENTER)
                 .setLineSpacing(0f, 1.4f)
                 .build()
         } else {
             @Suppress("DEPRECATION")
-            StaticLayout(text, textPaint, 920, Layout.Alignment.ALIGN_CENTER, 1.4f, 0f, false)
+            StaticLayout(text, textPaint, 620, Layout.Alignment.ALIGN_CENTER, 1.4f, 0f, false)
         }
         
         // 3. Translation Paint
@@ -462,12 +615,12 @@ class VideoGenerator {
         
         val transSl: StaticLayout? = if (translation != null) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                StaticLayout.Builder.obtain(translation, 0, translation.length, transPaint, 920)
+                StaticLayout.Builder.obtain(translation, 0, translation.length, transPaint, 620)
                     .setAlignment(Layout.Alignment.ALIGN_CENTER)
                     .build()
             } else {
                 @Suppress("DEPRECATION")
-                StaticLayout(translation, transPaint, 920, Layout.Alignment.ALIGN_CENTER, 1f, 0f, false)
+                StaticLayout(translation, transPaint, 620, Layout.Alignment.ALIGN_CENTER, 1f, 0f, false)
             }
         } else {
             null
@@ -476,9 +629,9 @@ class VideoGenerator {
         val totalHeight = sl.height + (transSl?.height?.plus(60f) ?: 0f)
         
         val startY = when (textPosition) {
-            "Top" -> 220f
-            "Bottom" -> 1920f - totalHeight - 320f
-            else -> (1920f - totalHeight) / 2f
+            "Top" -> 150f
+            "Bottom" -> 1280f - totalHeight - 200f
+            else -> (1280f - totalHeight) / 2f
         }
         
         // 4. Draw Background Box
@@ -492,9 +645,9 @@ class VideoGenerator {
                 style = Paint.Style.FILL
             }
             
-            val boxWidth = 960f
+            val boxWidth = 660f
             val boxHeight = totalHeight + 84f
-            val boxLeft = 540f - boxWidth / 2f
+            val boxLeft = 360f - boxWidth / 2f
             val boxTop = startY - 42f
             val boxRight = boxLeft + boxWidth
             val boxBottom = boxTop + boxHeight
@@ -506,14 +659,14 @@ class VideoGenerator {
         
         // 5. Draw Primary Text
         canvas.save()
-        canvas.translate(540f, startY)
+        canvas.translate(360f, startY)
         sl.draw(canvas)
         canvas.restore()
         
         // 6. Draw translation
         if (transSl != null) {
             canvas.save()
-            canvas.translate(540f, startY + sl.height + 60f)
+            canvas.translate(360f, startY + sl.height + 60f)
             transSl.draw(canvas)
             canvas.restore()
         }
